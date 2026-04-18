@@ -1,4 +1,4 @@
-# Markdown to Word Converter (v3.2 PRO)
+# Markdown to Word Converter
 
 这是一个基于 Python 的轻量级脚本，专门用于将 **Markdown** 转换为符合中文排版规范（宋体/黑体 + Times New Roman）的 **Word (.docx)** 文档。
 
