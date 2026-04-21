@@ -1,37 +1,62 @@
 #pip install pypandoc python-docx
+#上标：{{SUP_START}}内容{{SUP_END}}
 import pypandoc
 import os
+import re
 from docx import Document
 from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 
 def set_format(paragraph, font_east, font_west, size, is_bold=False, align=None, is_title=False):
-    """
-    Applies precise formatting to each paragraph.
-    Titles: 1.5x spacing | Body: 1.25x spacing
-    """
     if align:
         paragraph.alignment = align
-    
-    # Line spacing logic: 1.5 for titles, 1.25 for body text
     paragraph.paragraph_format.line_spacing = 1.5 if is_title else 1.25
 
-    if not paragraph.runs:
-        paragraph.add_run()
+    # 合并文本以处理跨 run 的暗号
+    full_text = "".join(run.text for run in paragraph.runs)
     
-    for run in paragraph.runs:
-        run.font.size = Pt(size)
-        run.font.bold = is_bold
-        # Force Black color for all text
-        run.font.color.rgb = RGBColor(0, 0, 0)
+    # --- 核心修改：匹配 {{SUP_START}} 和 {{SUP_END}} ---
+    if '{{SUP_START}}' in full_text:
+        # 使用正则切分出所有的暗号块
+        parts = re.split(r'({{SUP_START}}.*?{{SUP_END}})', full_text)
+        paragraph.clear() # 清空旧内容，咱们按新规矩重组
         
-        # Set Western Font (Times New Roman)
-        run.font.name = font_west
-        # Set East Asian Font (SimSun or Heiti)
-        r = run._element.get_or_add_rPr()
-        r_fonts = r.get_or_add_rFonts()
-        r_fonts.set(qn('w:eastAsia'), font_east)
+        for part in parts:
+            new_run = paragraph.add_run()
+            # 判定当前块是否为暗号内容
+            if part.startswith('{{SUP_START}}') and part.endswith('{{SUP_END}}'):
+                # 关键点：{{SUP_START}} 占 13 位，{{SUP_END}} 占 11 位
+                new_run.text = part[13:-11] 
+                new_run.font.superscript = True
+                
+                # 强力注入 XML 指令，模拟 Ctrl+Shift++
+                rPr = new_run._element.get_or_add_rPr()
+                from docx.oxml import OxmlElement
+                va = OxmlElement('w:vertAlign')
+                va.set(qn('w:val'), 'superscript')
+                rPr.append(va)
+            else:
+                new_run.text = part
+            
+            # 统一应用字体格式，字号保持原样不上小号
+            new_run.font.size = Pt(size)
+            new_run.font.name = font_west
+            new_run.font.bold = is_bold
+            new_run.font.color.rgb = RGBColor(0, 0, 0)
+            r = new_run._element.get_or_add_rPr()
+            r_fonts = r.get_or_add_rFonts()
+            r_fonts.set(qn('w:eastAsia'), font_east)
+    else:
+        # 没有暗号的段落，按原逻辑处理
+        for run in paragraph.runs:
+            run.font.size = Pt(size)
+            run.font.bold = is_bold
+            run.font.color.rgb = RGBColor(0, 0, 0)
+            run.font.name = font_west
+            r = run._element.get_or_add_rPr()
+            r_fonts = r.get_or_add_rFonts()
+            r_fonts.set(qn('w:eastAsia'), font_east)
 
 def apply_custom_styles(docx_path):
     """
@@ -58,19 +83,28 @@ def apply_custom_styles(docx_path):
     doc.save(docx_path)
 
 def convert_file(input_path):
-    """
-    Core conversion logic using Pandoc + Docx refinement.
-    """
     output_path = input_path.rsplit('.', 1)[0] + '.docx'
-    # Keep math support for Quantum/Physics notes
+    
+    # --- 新增预处理：读取 md，将 <sup> 替换为暗号 ---
+    with open(input_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    # 将 <sup>...</sup> 替换为 {{SUP:内容}}
+    processed_content = re.sub(r'<sup>(.*?)</sup>', r'{{SUP:\1}}', content)
+    
+    temp_md = input_path + ".temp.md"
+    with open(temp_md, 'w', encoding='utf-8') as f:
+        f.write(processed_content)
+    
     extra_args = ['--mathjax', '--from=markdown+tex_math_dollars']
     
     try:
-        pypandoc.convert_file(input_path, 'docx', outputfile=output_path, extra_args=extra_args)
+        # 使用处理后的临时文件转换
+        pypandoc.convert_file(temp_md, 'docx', outputfile=output_path, extra_args=extra_args)
         apply_custom_styles(output_path)
         print(f"  [SUCCESS] Created & Formatted: {os.path.basename(output_path)}")
-    except Exception as e:
-        print(f"  [FAILED] {os.path.basename(input_path)} | Reason: {e}")
+    finally:
+        if os.path.exists(temp_md):
+            os.remove(temp_md) # 删除临时文件
 
 def main():
     try:

@@ -29,3 +29,7 @@ pip install pypandoc python-docx
 * **二级标题**：宋体, 15pt, 加粗
 * **三级标题**：宋体, 12pt, 加粗
 * **正文**：宋体, 10.5pt (五号)
+
+
+# CHANGELOG
+2026.4.21：新增上标内容{{SUP_START}}内容{{SUP_END}}
