@@ -32,5 +32,5 @@ pip install pypandoc python-docx
 
 
 # CHANGELOG
-2026.4.21：新增上标内容{{SUP_START}}内容{{SUP_END}}
-2026.4.22：新增给代码块一个浅灰色框,支持代码高亮
+* 2026.4.21：新增上标内容{{SUP_START}}内容{{SUP_END}}
+* 2026.4.22：新增给代码块一个浅灰色框,支持代码高亮
