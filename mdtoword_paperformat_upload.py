@@ -8,7 +8,7 @@ from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 
-def set_format(paragraph, font_east, font_west, size, is_bold=False, align=None, is_title=False):
+def set_format(paragraph, font_east, font_west, size, is_bold=False, align=None, is_title=False, keep_color=False):
     if align:
         paragraph.alignment = align
     paragraph.paragraph_format.line_spacing = 1.5 if is_title else 1.25
@@ -26,7 +26,6 @@ def set_format(paragraph, font_east, font_west, size, is_bold=False, align=None,
             new_run = paragraph.add_run()
             # 判定当前块是否为暗号内容
             if part.startswith('{{SUP_START}}') and part.endswith('{{SUP_END}}'):
-                # 关键点：{{SUP_START}} 占 13 位，{{SUP_END}} 占 11 位
                 new_run.text = part[13:-11] 
                 new_run.font.superscript = True
                 
@@ -39,11 +38,15 @@ def set_format(paragraph, font_east, font_west, size, is_bold=False, align=None,
             else:
                 new_run.text = part
             
-            # 统一应用字体格式，字号保持原样不上小号
+            # 统一应用字体格式
             new_run.font.size = Pt(size)
             new_run.font.name = font_west
             new_run.font.bold = is_bold
-            new_run.font.color.rgb = RGBColor(0, 0, 0)
+            
+            # --- 颜色保护逻辑 ---
+            if not keep_color:
+                new_run.font.color.rgb = RGBColor(0, 0, 0)
+            
             r = new_run._element.get_or_add_rPr()
             r_fonts = r.get_or_add_rFonts()
             r_fonts.set(qn('w:eastAsia'), font_east)
@@ -52,7 +55,11 @@ def set_format(paragraph, font_east, font_west, size, is_bold=False, align=None,
         for run in paragraph.runs:
             run.font.size = Pt(size)
             run.font.bold = is_bold
-            run.font.color.rgb = RGBColor(0, 0, 0)
+            
+            # --- 颜色保护逻辑：如果是代码块(keep_color=True)，就跳过设黑操作 ---
+            if not keep_color:
+                run.font.color.rgb = RGBColor(0, 0, 0)
+            
             run.font.name = font_west
             r = run._element.get_or_add_rPr()
             r_fonts = r.get_or_add_rFonts()
@@ -60,51 +67,66 @@ def set_format(paragraph, font_east, font_west, size, is_bold=False, align=None,
 
 def apply_custom_styles(docx_path):
     """
-    Post-processing the Word document to inject specific fonts and spacing.
+    后处理 Word 文档，注入特定字体、行间距，并格式化代码块。
     """
     doc = Document(docx_path)
     
     for para in doc.paragraphs:
         style_name = para.style.name
-        
+        text = para.text.strip()
+
+        # 1. 处理标题
         if style_name == 'Heading 1':
-            # H1: 22pt (Level 2), Heiti, Center, Bold, 1.5x
             set_format(para, '黑体', 'Times New Roman', 22, True, WD_ALIGN_PARAGRAPH.CENTER, is_title=True)
         elif style_name == 'Heading 2':
-            # H2: 15pt (Small 3), SimSun, Left, Bold, 1.5x
             set_format(para, '宋体', 'Times New Roman', 15, True, WD_ALIGN_PARAGRAPH.LEFT, is_title=True)
         elif style_name == 'Heading 3':
-            # H3: 12pt (Small 4), SimSun, Left, Bold, 1.5x
             set_format(para, '宋体', 'Times New Roman', 12, True, WD_ALIGN_PARAGRAPH.LEFT, is_title=True)
+        
+        # 2. 处理正文与代码块
         else:
-            # Body: 10.5pt (Level 5), SimSun, Left, 1.25x
-            set_format(para, '宋体', 'Times New Roman', 10.5, False, WD_ALIGN_PARAGRAPH.LEFT, is_title=False)
+            # 识别代码块：Pandoc 默认样式名包含 'Source Code'
+            # 注意：不要把 'Normal' 也当做代码块，否则整篇文档的颜色保护都会失效
+            #is_code_style = 'Source Code' in style_name
+            is_code_style = 'source code' in style_name.lower() or 'verbatim' in style_name.lower()
+            
+            if is_code_style and text != "":
+                 # --- 关键：传入 keep_color=True，保住语法高亮 ---
+                 set_format(para, '宋体', 'Consolas', 10.5, False, WD_ALIGN_PARAGRAPH.LEFT, keep_color=True)
+            else:
+                 # 普通正文，按原样处理（强制黑色）
+                 set_format(para, '宋体', 'Times New Roman', 10.5, False, WD_ALIGN_PARAGRAPH.LEFT, keep_color=False)
             
     doc.save(docx_path)
 
 def convert_file(input_path):
     output_path = input_path.rsplit('.', 1)[0] + '.docx'
     
-    # --- 新增预处理：读取 md，将 <sup> 替换为暗号 ---
     with open(input_path, 'r', encoding='utf-8') as f:
         content = f.read()
-    # 将 <sup>...</sup> 替换为 {{SUP:内容}}
+    
+    # 保持您之前的上标预处理逻辑
     processed_content = re.sub(r'<sup>(.*?)</sup>', r'{{SUP:\1}}', content)
     
     temp_md = input_path + ".temp.md"
     with open(temp_md, 'w', encoding='utf-8') as f:
         f.write(processed_content)
     
-    extra_args = ['--mathjax', '--from=markdown+tex_math_dollars']
+    # --- 关键修改点：添加高亮风格 ---
+    # --highlight-style 支持: tango, pygments, kate, monochrome, espresso, zenburn, haddock
+    extra_args = [
+        '--mathjax', 
+        '--from=markdown+tex_math_dollars',
+        '--highlight-style=tango'  # 这里推荐 tango，在 Word 白底上色彩很正
+    ]
     
     try:
-        # 使用处理后的临时文件转换
         pypandoc.convert_file(temp_md, 'docx', outputfile=output_path, extra_args=extra_args)
         apply_custom_styles(output_path)
-        print(f"  [SUCCESS] Created & Formatted: {os.path.basename(output_path)}")
+        print(f"  [SUCCESS] Created & Formatted with Colors: {os.path.basename(output_path)}")
     finally:
         if os.path.exists(temp_md):
-            os.remove(temp_md) # 删除临时文件
+            os.remove(temp_md)
 
 def main():
     try:
