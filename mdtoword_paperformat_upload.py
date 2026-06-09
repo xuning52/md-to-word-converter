@@ -92,10 +92,10 @@ def apply_custom_styles(docx_path):
             
             if is_code_style and text != "":
                  # --- 关键：传入 keep_color=True，保住语法高亮 ---
-                 set_format(para, '宋体', 'Consolas', 10.5, False, WD_ALIGN_PARAGRAPH.LEFT, keep_color=True)
+                 set_format(para, '宋体', 'Consolas', 12, False, WD_ALIGN_PARAGRAPH.LEFT, keep_color=True)
             else:
                  # 普通正文，按原样处理（强制黑色）
-                 set_format(para, '宋体', 'Times New Roman', 10.5, False, WD_ALIGN_PARAGRAPH.LEFT, keep_color=False)
+                 set_format(para, '宋体', 'Times New Roman', 12, False, WD_ALIGN_PARAGRAPH.LEFT, keep_color=False)
             
     doc.save(docx_path)
 
