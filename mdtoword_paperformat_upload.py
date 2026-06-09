@@ -13,6 +13,10 @@ def set_format(paragraph, font_east, font_west, size, is_bold=False, align=None,
         paragraph.alignment = align
     paragraph.paragraph_format.line_spacing = 1.5 if is_title else 1.25
 
+    # 🔥【核心修改】：强行清零 Pandoc 带来的段前、段后假空行
+    paragraph.paragraph_format.space_before = Pt(0)
+    paragraph.paragraph_format.space_after = Pt(0)
+
     # 合并文本以处理跨 run 的暗号
     full_text = "".join(run.text for run in paragraph.runs)
     
@@ -81,6 +85,8 @@ def apply_custom_styles(docx_path):
         elif style_name == 'Heading 2':
             set_format(para, '宋体', 'Times New Roman', 15, True, WD_ALIGN_PARAGRAPH.LEFT, is_title=True)
         elif style_name == 'Heading 3':
+            set_format(para, '宋体', 'Times New Roman', 15, True, WD_ALIGN_PARAGRAPH.LEFT, is_title=True)
+        elif style_name == 'Heading 4':
             set_format(para, '宋体', 'Times New Roman', 12, True, WD_ALIGN_PARAGRAPH.LEFT, is_title=True)
         
         # 2. 处理正文与代码块
